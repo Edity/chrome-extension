@@ -8,7 +8,7 @@
 	"permissions": [
 		"tabs",
 		"contextMenus",
-		"http://localhost/edity/"
+		"http://edity.org/"
 	],
 	"background": {
 		"scripts": [ "dependencies/jquery.js", "background.js" ]

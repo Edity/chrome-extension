@@ -14,7 +14,7 @@ function edit( info, tab ) {
 		chrome.tabs.sendMessage( tab.id, { 'action': 'edit', 'editToken': editToken });
 	} else {
 		var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
-		$.get( 'http://localhost/mediawiki/api.php', data, function ( response ) {
+		$.get( 'http://edity.org/api.php', data, function ( response ) {
 			editToken = response.query.tokens.csrftoken;
 			chrome.tabs.sendMessage( tab.id, { 'action': 'edit', 'editToken': editToken });
 		});

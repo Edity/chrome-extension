@@ -35,7 +35,7 @@ var changes = [];
  */
 var liveChangeCount = 0;
 
-$.get( 'http://localhost/mediawiki/api.php', data, function ( response ) {
+$.get( 'http://edity.org/api.php', data, function ( response ) {
 	//console.log( response );
 
 	// Unwrap the content
@@ -110,7 +110,7 @@ chrome.runtime.onMessage.addListener( function ( message, sender, sendResponse )
 					'format': 'json'
 				};
 
-				$.post( 'http://localhost/mediawiki/api.php', data, function ( response ) {
+				$.post( 'http://edity.org/api.php', data, function ( response ) {
 					//console.log( response );
 					chrome.runtime.sendMessage({ 'liveChangeCount': liveChangeCount });
 				});
