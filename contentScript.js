@@ -24,6 +24,15 @@ contentScript = {
 	lastClickedElement: null,
 
 	/**
+	 * List of URLs that aren't be editable
+	 */
+	blacklist: [
+		window.location.origin, // The home page of the sites shouldn't be editable?
+		window.location.origin + '/',
+		window.location.origin + '/index.html',
+	],
+
+	/**
 	 * Config of the Hallo text editor
 	 */
 	halloConfig: {
@@ -107,76 +116,78 @@ contentScript = {
 	 * Update the context menu
 	 */
 	updateContextMenu: function () {
-		var home = [
-			window.location.origin,
-			window.location.origin + '/',
-			window.location.origin + '/index.html',
-		];
-		if ( home.indexOf( contentScript.url ) > -1 ) {
-			console.log( "You can't edit the home page, only subpages" ); // We're in the site's home, editing now allowed
+		if ( contentScript.blacklist.indexOf( contentScript.url ) === -1 ) {
+			chrome.runtime.sendMessage({ 'method': 'createContextMenu' });
+		} else {
+			chrome.runtime.sendMessage({ 'method': 'removeContextMenu' });
 		}
 	},
 
 	/**
 	 * Make the last clicked element editable
 	 */
-	edit: function () {
-		var changes = contentScript.changes,
-			liveChangeCount = contentScript.liveChangeCount,
-			element = contentScript.lastClickedElement,
+	edit: function ( message, sender, sendResponse ) {
+		var element = contentScript.lastClickedElement,
 			oldHTML = element.prop( 'outerHTML' );
 
 		element.hallo( contentScript.halloConfig ).focus().keydown( function ( event ) {
-
 			if ( event.keyCode === 13 ) {
-
-				// Remove all traces of Hallo
-				element.removeAttr( 'contentEditable' ).removeClass( 'isModified inEditMode' );
-				if ( !element.hasClass() ) {
-					element.removeAttr( 'class' );
-				}
-
-				var newHTML = element.prop( 'outerHTML' );
-
-				var addChange = true;
-				changes.forEach( function ( change, index ) {
-					// If the change is to an already modified element, merge the changes
-					if ( oldHTML === change.newHTML ) {
-						change.newHTML = newHTML;
-						addChange = false;
-					}
-					// If the change happens to return the HTML to its original state, remove the change, per useless
-					// For example, in case a user makes a mistake and then corrects it, or repents of a vandalism
-					if ( change.oldHTML === newHTML ) {
-						changes.splice( index, 1 );
-						liveChangeCount--;
-						addChange = false;
-					}
-				});
-
-				// If the change is new, add it to the array of changes
-				if ( addChange ) {
-					var newChange = { 'oldHTML': oldHTML, 'newHTML': newHTML };
-					liveChangeCount++;
-					changes.push( newChange );
-				}
-
-				var data = {
-					'action': 'edit',
-					'title': url,
-					'text': JSON.stringify( changes ),
-					'token': message.editToken,
-					'format': 'json'
-				};
-
-				$.post( 'https://edity.org/api.php', data, function ( response ) {
-					//console.log( response );
-					contentScript.updateBadge();
-				});
-
-				return;
+				contentScript.save( element, oldHTML, message.editToken );
 			}
 		});
+	},
+
+	/**
+	 * Save the edited element
+	 */
+	save: function ( element, oldHTML, editToken ) {
+
+		// Remove all traces of Hallo
+		element.removeAttr( 'contentEditable' ).removeClass( 'isModified inEditMode' );
+		if ( !element.hasClass() ) {
+			element.removeAttr( 'class' );
+		}
+
+		var newHTML = element.prop( 'outerHTML' ),
+			addChange = true;
+
+		contentScript.changes.forEach( function ( change, index ) {
+			// If the change is to an already modified element, merge the changes
+			if ( oldHTML === change.newHTML ) {
+				change.newHTML = newHTML;
+				addChange = false;
+			}
+			// If the change happens to return the HTML to its original state, remove the change, per useless
+			// For example, in case a user makes a mistake and then corrects it, or repents of a vandalism
+			if ( change.oldHTML === newHTML ) {
+				contentScript.changes.splice( index, 1 );
+				contentScript.liveChangeCount--;
+				addChange = false;
+			}
+		});
+
+		// If the change is new, add it to the array of changes
+		if ( addChange ) {
+			var newChange = { 'oldHTML': oldHTML, 'newHTML': newHTML };
+			contentScript.liveChangeCount++;
+			contentScript.changes.push( newChange );
+		}
+
+		var data = {
+			'action': 'edit',
+			'title': contentScript.url,
+			'text': JSON.stringify( contentScript.changes ),
+			'token': editToken,
+			'format': 'json'
+		};
+
+		$.post( 'https://edity.org/api.php', data, function ( response ) {
+			//console.log( response );
+			contentScript.updateBadge();
+		});
+
+		return;
+
 	}
 };
 
