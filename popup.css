@@ -1,0 +1,40 @@
+body {
+	margin: 0;
+	width: 160px;
+}
+
+#edity-header {
+	padding: 10px;
+}
+#edity-header img {
+	float: left;
+	margin-right: 5px;
+}
+#edity-header h1 {
+	margin: 0;
+}
+#edity-header span {
+	color: #aaa;
+}
+
+#edity-alert {
+	background: #eef;
+	padding: 10px;
+}
+
+#edity-menu {
+	clear: both;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+#edity-menu a {
+	color: inherit;
+	display: block;
+	outline: none;
+	padding: 10px;
+	text-decoration: none;
+}
+#edity-menu a:hover {
+	background: #eee;
+}
