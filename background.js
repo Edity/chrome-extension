@@ -1,29 +1,22 @@
 background = {
 
 	/**
-	 * List of all edited URLs
-	 * We retrieve it once when Edity initializes
-	 * and we only query the wiki again if the user vists one of these URLs
-	 * If the Edity project grows too big and this list becomes unmanageable, we'll see
+	 * Array of edited URLs
 	 */
 	whitelist: [],
 
 	/**
-	 * All changes retrived from the wiki
-	 * We store them here to further minimize requests
-	 * This object has URLs as property names
-	 * and the corresponding array of changes as values
+	 * Array of protected URLs
 	 */
-	changes: {},
+	blacklist: [],
 
 	/**
-	 * Store the edit token because we only need one per session
+	 * Token needed to edit the wiki
 	 */
 	editToken: null,
 
 	/**
-	 * Store the id of the context menu
-	 * so that we can update it rather than creating it many times
+	 * ID of the context menu
 	 */
 	contextMenu: null,
 
@@ -32,7 +25,13 @@ background = {
 	 */
 	init: function () {
 		background.bindEvents();
-		background.updateWhitelist();
+		background.requestWhitelist();
+		background.requestBlacklist();
+		background.contextMenu = chrome.contextMenus.create({
+			'title': 'Edit with Edity',
+			'contexts': [ 'link', 'selection' ],
+			'onclick' : background.edit
+		});
 	},
 
 	/**
@@ -45,97 +44,44 @@ background = {
 	},
 
 	/**
-	 * Create the context menu if it doesn't already exist
+	 * Send the requested property to the content script
 	 */
-	createContextMenu: function ( message, sender, sendResponse ) {
-		if ( ! background.contextMenu ) {
-			background.contextMenu = chrome.contextMenus.create({
-				"title": "Edit with Edity",
-				"contexts": [ "link", "selection" ],
-				"onclick" : background.edit
-			});
-		}
+	sendProperty: function ( message, sender, sendResponse ) {
+		sendResponse( background[ message.property ] );
 	},
 
 	/**
-	 * Remove the context menu
+	 * Update the context menu based on the URL sent from the content script
 	 */
-	removeContextMenu: function ( message, sender, sendResponse ) {
-		if ( background.contextMenu ) {
-			chrome.contextMenus.remove( background.contextMenu );
-		}
+	updateContextMenu: function ( message, sender, sendResponse ) {
+		var enabled = background.inBlacklist( message.url ) ? false : true;
+		chrome.contextMenus.update( background.contextMenu, { 'enabled': enabled });
 	},
 
 	/**
-	 * Set the badge of the Edity icon
+	 * Update the badge with the text sent from the content script
 	 */
-	setBadge: function ( message, sender, sendResponse ) {
+	updateBadge: function ( message, sender, sendResponse ) {
 		chrome.browserAction.setBadgeText({ 'tabId': sender.tab.id, 'text': message.text });
 	},
 
 	/**
-	 * Get the badge of the Edity icon
+	 * Update the whitelist with the URL sent from the content script
 	 */
-	getBadge: function ( message, sender, sendResponse ) {
-		chrome.browserAction.getBadgeText({ 'tabId': sender.tab.id }, function ( text ) {
-			sendResponse( text );
-		});
+	updateWhitelist: function ( message, sender, sendResponse ) {
+		if ( ! background.inWhitelist( message.url ) ) {
+			background.whitelist.push( message.url );
+		}
 	},
 
 	/**
-	 * Get changes for the current URL
+	 * Request the latest whitelist from the wiki
 	 */
-	getChanges: function ( message, sender, sendResponse ) {
-
-		// Check if the URL is in the whitelist
-		var url = sender.tab.url;
-		if ( background.whitelist.indexOf( url ) === -1 ) {
-			sendResponse([]); // Not in the whitelist, so no changes
-			return;
-		}
-
-		// Check if we already have the changes
-		var changes = background.changes;
-		if ( url in changes ) {
-			sendResponse( changes[ url ] );
-			return;
-		}
-
-		// Retrieve the changes from the wiki
-		var data = { 'titles': url, 'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'format': 'json' };
-		$.get( 'https://edity.org/api.php', data, function ( response ) {
-			//console.log( response );
-
-			// Check if the wiki page still exists
-			var id = parseInt( Object.keys( response.query.pages )[0] );
-			if ( id === -1 ) {
-				whitelist.splice( whitelist.indexOf( url ), 1 ); // Remove the URL from the whitelist
-				sendResponse([]);
-				return;
-			}
-
-			// Check if the content is valid (in case of vandalism)
-			var content = response.query.pages[ id ].revisions[0]['*']; // Unwrap the content
-			content = JSON.parse( content );
-			if ( content === null ) {
-				whitelist.splice( whitelist.indexOf( url ), 1 );
-				sendResponse([]);
-				return;
-			}
-
-			// Assume that the content is a valid array of changes
-			changes[ url ] = content;
-			sendResponse( changes[ url ] );
-		});
-	},
-
-	/**
-	 * Update the whitelist with the latest list of edited URLs
-	 */
-	updateWhitelist: function () {
+	requestWhitelist: function () {
 		var data = { 'action': 'query', 'list': 'allpages', 'format': 'json' };
-		$.get( 'https://edity.org/api.php', data, function ( response ) {
+		return $.get( 'https://edity.org/api.php', data, function ( response ) {
 			//console.log( response );
+			background.whitelist = [];
 			response.query.allpages.forEach( function ( page ) {
 				background.whitelist.push( page.title );
 			});
@@ -143,19 +89,61 @@ background = {
 	},
 
 	/**
-	 * Get the edit token and tell the contentScript to make the last clicked element editable
+	 * Request the latest blacklist from the wiki
+	 */
+	requestBlacklist: function () {
+		var data = { 'action': 'query', 'list': 'protectedtitles', 'format': 'json' };
+		return $.get( 'https://edity.org/api.php', data, function ( response ) {
+			//console.log( response );
+			background.blacklist = [];
+			response.query.protectedtitles.forEach( function ( page ) {
+				background.blacklist.push( page.title );
+			});
+		});
+	},
+
+	/**
+	 * Request an edit token from the wiki
+	 */
+	requestEditToken: function () {
+		var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
+		return $.get( 'https://edity.org/api.php', data, function ( response ) {
+			//console.log( response );
+			background.editToken = response.query.tokens.csrftoken;
+		});
+	},
+
+	/**
+	 * Tell the active tab to make the last clicked element editable
 	 */
 	edit: function ( info, tab ) {
 		if ( background.editToken ) {
 			chrome.tabs.sendMessage( tab.id, { 'method': 'edit', 'editToken': background.editToken });
 		} else {
-			var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
-			$.get( 'https://edity.org/api.php', data, function ( response ) {
-				//console.log( response );
-				background.editToken = response.query.tokens.csrftoken;
-				chrome.tabs.sendMessage( tab.id, { 'method': 'edit', 'editToken': background.editToken });
+			background.requestEditToken().then( function () {
+				background.edit( info, tab );
 			});
 		}
+	},
+
+	/**
+	 * Check if the given URL is in the whitelist
+	 */
+	inWhitelist: function ( url ) {
+		if ( background.whitelist.indexOf( url ) === -1 ) {
+			return false;
+		}
+		return true;
+	},
+
+	/**
+	 * Check if the given URL is in the blacklist
+	 */
+	inBlacklist: function ( url ) {
+		if ( background.blacklist.indexOf( url ) === -1 ) {
+			return false;
+		}
+		return true;
 	}
 };
 

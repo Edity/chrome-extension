@@ -13,10 +13,9 @@ contentScript = {
 	/**
 	 * Amount of changes actually done to the current page
 	 * This may be less than the changes retrived from the wiki
-	 * for example in dynamic pages like Facebook
-	 * or in pages where the source HTML has changed
+	 * for example in dynamic pages or in pages where the source has changed
 	 */
-	liveChangeCount: 0,
+	liveEditCount: 0,
 
 	/**
 	 * Track the last clicked element to make it editable when the background says so
@@ -24,25 +23,17 @@ contentScript = {
 	lastClickedElement: null,
 
 	/**
-	 * List of URLs that aren't be editable
-	 */
-	blacklist: [
-		window.location.origin, // The home page of the sites shouldn't be editable?
-		window.location.origin + '/',
-		window.location.origin + '/index.html',
-	],
-
-	/**
 	 * Config of the Hallo text editor
 	 */
 	halloConfig: {
-		plugins: {
+		'editable': true,
+		'plugins': {
 			'halloformat': {
-				"formattings": {
-					"bold": true,
-					"italic": true,
-					"underline": true,
-					"strikethrough": true
+				'formattings': {
+					'bold': true,
+					'italic': true,
+					'underline': true,
+					'strikethrough': true
 				}
 			},
 			'hallolink': true,
@@ -54,10 +45,10 @@ contentScript = {
 	 * Initialization script
 	 */
 	init: function () {
-		contentScript.url = contentScript.getCurrentURL();
+		contentScript.url = contentScript.getCleanURL();
 		contentScript.bindEvents();
-		contentScript.updateChanges();
 		contentScript.updateContextMenu();
+		contentScript.requestChanges();
 	},
 
 	/**
@@ -73,54 +64,80 @@ contentScript = {
 	},
 
 	/**
-	 * Get the current URL but without the hash
+	 * Get the current URL, normalized
 	 */
-	getCurrentURL: function () {
-		var url = window.location.href,
-			indexOfHash = url.indexOf( "#" );
-		if ( indexOfHash > -1 ) {
-			url = url.substr( 0, indexOfHash );
-		}
-		return url;
+	getCleanURL: function () {
+		return window.location.origin + window.location.pathname;
 	},
 
 	/**
-	 * Get the changes from the background or the wiki 
-	 */
-	updateChanges: function () {
-		chrome.runtime.sendMessage({ 'method': 'getChanges' }, function ( response ) {
-			//console.log( response );
-			contentScript.changes = response;
-			response.forEach( function ( change ) {
-				if ( document.body.innerHTML.indexOf( change.oldHTML ) > -1 ) {
-					document.body.innerHTML = document.body.innerHTML.replace( change.oldHTML, change.newHTML ); // This is the magic line
-					contentScript.liveChangeCount++;
-				}
-			});
-			contentScript.updateBadge();
-		});
-	},
-
-	/**
-	 * Update the badge with the latest liveChangeCount
+	 * Ask the background to update the badge
 	 */
 	updateBadge: function () {
 		var text = '';
-		if ( contentScript.liveChangeCount > 0 ) {
-			text += contentScript.liveChangeCount;
+		if ( contentScript.liveEditCount > 0 ) {
+			text += contentScript.liveEditCount;
 		}
-		chrome.runtime.sendMessage({ 'method': 'setBadge', 'text': text });
+		chrome.runtime.sendMessage({ 'method': 'updateBadge', 'text': text });
 	},
 
 	/**
-	 * Update the context menu
+	 * Ask the background to update the context menu
 	 */
 	updateContextMenu: function () {
-		if ( contentScript.blacklist.indexOf( contentScript.url ) === -1 ) {
-			chrome.runtime.sendMessage({ 'method': 'createContextMenu' });
-		} else {
-			chrome.runtime.sendMessage({ 'method': 'removeContextMenu' });
-		}
+		chrome.runtime.sendMessage({ 'method': 'updateContextMenu', 'url': contentScript.url });
+	},
+
+	/**
+	 * Ask the background to update the whitelist with the current URL
+	 */
+	updateWhitelist: function () {
+		chrome.runtime.sendMessage({ 'method': 'updateWhitelist', 'url': contentScript.url });
+	},
+
+	/**
+	 * Request the changes from the wiki 
+	 */
+	requestChanges: function () {
+		chrome.runtime.sendMessage({ 'method': 'sendProperty', 'property': 'whitelist' }, function ( whitelist ) {
+			//console.log( response );
+
+			if ( whitelist.indexOf( contentScript.url ) === -1 ) {
+				return; // Not in the whitelist
+			}
+/*
+			if ( blacklist.indexOf( contentScript.url ) > -1 ) {
+				return; // In the blacklist
+			}
+*/
+			var data = { 'titles': contentScript.url, 'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'format': 'json' };
+			$.get( 'https://edity.org/api.php', data, function ( response ) {
+				//console.log( response );
+
+				// Make sure the wiki page exists
+				var id = parseInt( Object.keys( response.query.pages )[0] );
+				if ( id === -1 ) {
+					return;
+				}
+
+				// Make sure the content is valid (in case of vandalism)
+				var content = response.query.pages[ id ].revisions[0]['*']; // Unwrap the content
+				content = JSON.parse( content );
+				if ( content === null ) {
+					return;
+				}
+
+				// Assume that the content is a valid array of changes
+				contentScript.changes = content;
+				contentScript.changes.forEach( function ( change ) {
+					if ( document.body.innerHTML.indexOf( change.oldHTML ) > -1 ) {
+						document.body.innerHTML = document.body.innerHTML.replace( change.oldHTML, change.newHTML ); // This is the magic line
+						contentScript.liveEditCount++;
+					}
+				});
+				contentScript.updateBadge();
+			});
+		});
 	},
 
 	/**
@@ -130,9 +147,10 @@ contentScript = {
 		var element = contentScript.lastClickedElement,
 			oldHTML = element.prop( 'outerHTML' );
 
-		element.hallo( contentScript.halloConfig ).focus().keydown( function ( event ) {
+		element.hallo( contentScript.halloConfig ).keydown( function ( event ) {
 			if ( event.keyCode === 13 ) {
 				contentScript.save( element, oldHTML, message.editToken );
+				element.unbind( 'keydown' );
 			}
 		});
 	},
@@ -143,25 +161,25 @@ contentScript = {
 	save: function ( element, oldHTML, editToken ) {
 
 		// Remove all traces of Hallo
-		element.removeAttr( 'contentEditable' ).removeClass( 'isModified inEditMode' );
-		if ( !element.hasClass() ) {
-			element.removeAttr( 'class' );
-		}
+		element.hallo({ 'editable': false });
+		element.removeAttr( 'contentEditable' );
+		element.filter( '[class=""]' ).removeAttr( 'class' );
 
 		var newHTML = element.prop( 'outerHTML' ),
 			addChange = true;
 
 		contentScript.changes.forEach( function ( change, index ) {
+
 			// If the change is to an already modified element, merge the changes
 			if ( oldHTML === change.newHTML ) {
 				change.newHTML = newHTML;
 				addChange = false;
 			}
 			// If the change happens to return the HTML to its original state, remove the change, per useless
-			// For example, in case a user makes a mistake and then corrects it, or repents of a vandalism
-			if ( change.oldHTML === newHTML ) {
+			// For example, if a user makes a change and then repents
+			if ( newHTML === change.oldHTML ) {
 				contentScript.changes.splice( index, 1 );
-				contentScript.liveChangeCount--;
+				contentScript.liveEditCount--;
 				addChange = false;
 			}
 		});
@@ -169,7 +187,7 @@ contentScript = {
 		// If the change is new, add it to the array of changes
 		if ( addChange ) {
 			var newChange = { 'oldHTML': oldHTML, 'newHTML': newHTML };
-			contentScript.liveChangeCount++;
+			contentScript.liveEditCount++;
 			contentScript.changes.push( newChange );
 		}
 
@@ -184,10 +202,8 @@ contentScript = {
 		$.post( 'https://edity.org/api.php', data, function ( response ) {
 			//console.log( response );
 			contentScript.updateBadge();
+			contentScript.updateWhitelist();
 		});
-
-		return;
-
 	}
 };
 

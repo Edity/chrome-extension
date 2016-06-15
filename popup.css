@@ -1,6 +1,7 @@
 body {
+	background: #f8f8f8;
 	margin: 0;
-	width: 160px;
+	width: 180px;
 }
 
 #edity-header {
@@ -17,24 +18,28 @@ body {
 	color: #aaa;
 }
 
-#edity-alert {
-	background: #eef;
-	padding: 10px;
-}
-
 #edity-menu {
 	clear: both;
 	list-style: none;
 	margin: 0;
 	padding: 0;
 }
+#edity-menu span,
 #edity-menu a {
 	color: inherit;
+	cursor: pointer;
 	display: block;
 	outline: none;
 	padding: 10px;
 	text-decoration: none;
 }
+#edity-menu span:hover,
+#edity-menu img:hover,
 #edity-menu a:hover {
-	background: #eee;
+	background: #f2f2f2;
+}
+#edity-menu img {
+	cursor: pointer;
+	float: right;
+	padding: 10px;
 }
