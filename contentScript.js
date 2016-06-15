@@ -147,12 +147,44 @@ contentScript = {
 		var element = contentScript.lastClickedElement,
 			oldHTML = element.prop( 'outerHTML' );
 
-		element.hallo( contentScript.halloConfig ).keydown( function ( event ) {
-			if ( event.keyCode === 13 ) {
+		// Initialize Rangy
+		rangy.init();
+		console.log( rangy );
+
+		// Create the toolbar elements
+		var toolbar = $( '<div>' ).attr( 'id', 'edity-toolbar' ),
+			saveButton = $( '<button>' ).attr( 'id', 'edity-save-button' ).text( 'Save' ).click( function ( event ) {
 				contentScript.save( element, oldHTML, message.editToken );
-				element.unbind( 'keydown' );
-			}
-		});
+			});
+			boldButton = $( '<button>' ).attr( 'id', 'edity-bold-button' ).html( '<strong>B</strong>' ).click( function ( event ) {
+				var boldApplier = rangy.createCssClassApplier( 'edity-bold', { 'elementTagName': 'strong' });
+				boldApplier.toggleSelection();
+			});
+			italicButton = $( '<button>' ).attr( 'id', 'edity-italic-button' ).html( '<em>i</em>' ).click( function ( event ) {
+				var italicApplier = rangy.createCssClassApplier( 'edity-italic', { 'elementTagName': 'em' });
+				italicApplier.toggleSelection();
+			});
+			underlineButton = $( '<button>' ).attr( 'id', 'edity-underline-button' ).html( '<u>U</u>' ).click( function ( event ) {
+				var underlineApplier = rangy.createCssClassApplier( 'edity-underline', { 'elementTagName': 'u' });
+				underlineApplier.toggleSelection();
+			});
+			strikeButton = $( '<button>' ).attr( 'id', 'edity-strike-button' ).html( '<strike>S</strike>' ).click( function ( event ) {
+				var strikeApplier = rangy.createCssClassApplier( 'edity-strike', { 'elementTagName': 'strike' });
+				strikeApplier.toggleSelection();
+			});
+			linkButton = $( '<button>' ).attr( 'id', 'edity-link-button' ).html( 'Link' ).click( function ( event ) {
+				var linkApplier = rangy.createCssClassApplier( 'edity-link', { 'elementTagName': 'a' });
+				linkApplier.toggleSelection();
+			});
+
+		// Put it all together
+		toolbar.append( saveButton, boldButton, italicButton, underlineButton, strikeButton, linkButton );
+
+		// Add it to the DOM
+		$( 'body' ).append( toolbar );
+
+		// Make the element editable
+		element.attr( 'contentEditable', true ).focus();
 	},
 
 	/**
@@ -160,10 +192,9 @@ contentScript = {
 	 */
 	save: function ( element, oldHTML, editToken ) {
 
-		// Remove all traces of Hallo
-		element.hallo({ 'editable': false });
+		// Remove all traces of the editor
+		$( '#edity-toolbar' ).remove();
 		element.removeAttr( 'contentEditable' );
-		element.filter( '[class=""]' ).removeAttr( 'class' );
 
 		var newHTML = element.prop( 'outerHTML' ),
 			addChange = true;

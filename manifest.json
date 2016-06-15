@@ -33,13 +33,13 @@
 			"run_at": "document_end",
 			"css": [
 				"dependencies/jquery-ui/jquery-ui.min.css",
-				"dependencies/font-awesome/css/font-awesome.min.css"
+				"contentScript.css"
 			],
 			"js": [
 				"dependencies/jquery.js",
 				"dependencies/jquery-ui/jquery-ui.min.js",
-				"dependencies/rangy.js",
-				"dependencies/hallo.js",
+				"dependencies/rangy/rangy-core.js",
+				"dependencies/rangy/rangy-cssclassapplier.js",
 				"contentScript.js"
 			]
 		}
