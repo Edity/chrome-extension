@@ -1,7 +1,7 @@
 body {
 	background: #f8f8f8;
 	margin: 0;
-	width: 180px;
+	width: 200px;
 }
 
 #edity-header {
@@ -24,22 +24,11 @@ body {
 	margin: 0;
 	padding: 0;
 }
-#edity-menu span,
-#edity-menu a {
-	color: inherit;
+#edity-menu li {
 	cursor: pointer;
-	display: block;
-	outline: none;
+	margin: 0;
 	padding: 10px;
-	text-decoration: none;
 }
-#edity-menu span:hover,
-#edity-menu img:hover,
-#edity-menu a:hover {
+#edity-menu li:hover {
 	background: #f2f2f2;
-}
-#edity-menu img {
-	cursor: pointer;
-	float: right;
-	padding: 10px;
 }

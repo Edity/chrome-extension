@@ -1,24 +1,39 @@
 #edity-toolbar {
-	background: #aaa;
+	background: white;
+	border-bottom: 1px solid #aaa;
 	box-sizing: border-box;
-	opacity: .9;
-	padding: 10px;
+	padding: 5px;
 	position: fixed;
 	top: 0; left: 0;
 	width: 100%;
 }
 
 #edity-toolbar button {
-	background: white;
-	border: none;
-	font: inherit;
-	margin-right: 5px;
-	padding: 5px 10px;
+	margin: 5px;
 }
 
-#edity-save-button {
-	background: black !important;
-	color: white !important;
+.edity-dialog {
+	background: white;
+	box-sizing: border-box;
+	margin-left: -250px;
+	padding: 20px;
+	position: fixed;
+	top: 100px;
+	left: 50%;
+	width: 500px;
+}
+.edity-dialog input[type="text"] {
+	box-sizing: border-box;
+	display: block;
+	margin: 5px 0;
+	padding: 5px;
+	width: 100%;
+}
+.edity-dialog input[type="checkbox"] {
+	margin-right: 5px;
+	vertical-align: top;
+}
+
+.edity-float-right {
 	float: right;
-	margin-right: 0;
 }

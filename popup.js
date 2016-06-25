@@ -1,3 +1,6 @@
+/**
+ * Main popup object
+ */
 popup = {
 
 	/**
@@ -10,16 +13,56 @@ popup = {
 	 */
 	init: function () {
 		popup.background = popup.getBackground();
-		popup.bindEvents();
-		popup.updateCount();
-		popup.updateRandom();
+		popup.build();
+		popup.bind();
+	},
+
+	/**
+	 * Build the popup
+	 */
+	build: function () {
+		// Create all the buttons
+		this.editPageItem = $( '<li>' ).text( 'Edit this page' );
+		this.protectedPageItem = $( '<li>' ).text( 'This page is protected' );
+		this.editCountItem = $( '<li>' ).text( 'No edits to this page' );
+		this.latestEditsItem = $( '<li>' ).text( 'Request latest edits to this page' );
+		this.randomPageItem = $( '<li>' ).text( 'Random edited page' );
+		this.reportItem = $( '<li>' ).text( 'Report a problem' );
+		this.shareItem = $( '<li>' ).text( 'Help spread the word' );
+
+		// Add the relevant ones to the menu
+		if ( this.background.inBlacklist( this.background.url ) ) {
+			$( '#edity-menu' ).append( this.protectedPageItem );
+		} else {
+			$( '#edity-menu' ).append( this.editPageItem );
+		}
+		$( '#edity-menu' ).append(
+			this.editCountItem,
+			this.latestEditsItem,
+			this.randomPageItem,
+			this.reportItem,
+			this.shareItem
+		);
 	},
 
 	/**
 	 * Bind events
 	 */
-	bindEvents: function () {
-		$( '#edity-reload' ).click( popup.updateChanges );
+	bind: function () {
+		this.editPageItem.click( popup.onEditPageItemClick );
+		this.protectedPageItem.click( popup.onProtectedPageItemClick );
+		this.editCountItem.click( popup.onEditCountItemClick );
+		this.latestEditsItem.click( popup.onLatestEditsItemClick );
+		this.randomPageItem.click( popup.onRandomPageItemClick );
+		this.reportItem.click( popup.onReportItemClick );
+		this.shareItem.click( popup.onShareItemClick );
+	},
+
+	/**
+	 * Convenience method to close the popup
+	 */
+	close: function () {
+		window.close();
 	},
 
 	/**
@@ -30,35 +73,70 @@ popup = {
 	},
 
 	/**
-	 * Update the text and href of the edit count link based on the badge
+	 * Start the edit mode
 	 */
-	updateCount: function () {
-		chrome.tabs.query({ 'active': true, 'currentWindow': true }, function ( tabs ) {
-			var tab = tabs[0];
-			chrome.browserAction.getBadgeText({ 'tabId': tab.id }, function ( liveEditCount ) {
-				if ( liveEditCount ) {
-					var href = 'https://edity.org/' + tab.url,
-						text = liveEditCount + ' edit' + ( liveEditCount === '1' ? '' : 's' ) + ' to this page';
-					$( '#edity-count a' ).attr( 'href', href ).text( text );
-				}
-			});
+	onEditPageItemClick: function ( event ) {
+		popup.background.queryCurrentTab( function ( tab ) {
+			popup.background.edit( tab );
+			popup.close();
 		});
 	},
 
 	/**
-	 * Update the href of the random page link
+	 * Send the user to the wiki
 	 */
-	updateRandom: function () {
-		var href = popup.background.whitelist[ Math.floor( Math.random() * popup.background.whitelist.length ) ];
-		$( '#edity-random a' ).attr( 'href', href );
+	onProtectedPageItemClick: function ( event ) {
+		chrome.tabs.create({
+			'url': 'https://edity.org/Edity:Protected_pages'
+		});
 	},
 
 	/**
-	 * Update with the latest changes from the wiki
+	 * Send the user to the wiki
 	 */
-	updateChanges: function () {
+	onEditCountItemClick: function ( event ) {
+		chrome.tabs.create({
+			'url': 'https://edity.org/' + popup.url
+		});
+	},
+
+	/**
+	 * Send the user to a random edited page
+	 */
+	onRandomPageItemClick: function ( event ) {
+		popup.background.queryCurrentTab( function ( tab ) {
+			chrome.tabs.update( tab.id, {
+				'url': popup.background.whitelist[ Math.floor( Math.random() * popup.background.whitelist.length ) ]
+			});
+			popup.close();
+		});
+	},
+
+	/**
+	 * Request the latest edits from the wiki
+	 */
+	onLatestEditsItemClick: function ( event ) {
 		popup.background.requestWhitelist().then( function () {
-			chrome.tabs.reload(); // A reload may not be necessary
+			chrome.tabs.reload(); // A reload is not strictly necessary, but it's clearer to the user
+			popup.close();
+		});
+	},
+
+	/**
+	 * Send the user to the report page
+	 */
+	onReportItemClick: function ( event ) {
+		chrome.tabs.create({
+			'url': 'https://edity.org/Edity:Report_a_problem'
+		});
+	},
+
+	/**
+	 * Send the user to the report page
+	 */
+	onShareItemClick: function ( event ) {
+		chrome.tabs.create({
+			'url': 'https://edity.org/Edity:Help_spread_the_word'
 		});
 	}
 };

@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "Edity",
-	"version": "0.5",
+	"version": "0.8",
 	"author": "Sophivorus",
 	"description": "Edit the Web",
 	"homepage_url": "https://edity.org",
@@ -18,7 +18,7 @@
 	],
 	"background": {
 		"scripts": [
-			"dependencies/jquery.js",
+			"resources/jquery.js",
 			"background.js"
 		]
 	},
@@ -32,19 +32,18 @@
 			"matches": [ "<all_urls>" ],
 			"run_at": "document_end",
 			"css": [
-				"dependencies/jquery-ui/jquery-ui.min.css",
 				"contentScript.css"
 			],
 			"js": [
-				"dependencies/jquery.js",
-				"dependencies/jquery-ui/jquery-ui.min.js",
-				"dependencies/rangy/rangy-core.js",
-				"dependencies/rangy/rangy-cssclassapplier.js",
+				"resources/jquery.js",
+				"resources/rangy/rangy-core.js",
+				"resources/rangy/rangy-classapplier.js",
+				"resources/rangy/rangy-selectionsaverestore.js",
 				"contentScript.js"
 			]
 		}
 	],
 	"web_accessible_resources": [
-		"dependencies/*"
+		"resources/*"
 	]
 }
