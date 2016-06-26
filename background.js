@@ -36,7 +36,7 @@ background = {
 	 */
 	queryCurrentTab: function ( callback ) {
 		chrome.tabs.query({ 'active': true, 'currentWindow': true }, function ( tabs ) {
-			let tab = tabs[0];
+			var tab = tabs[0];
 			callback( tab );
 		});
 	},
@@ -92,7 +92,7 @@ background = {
 		 * Check if the URL sent from the content script has edits
 		 */
 		hasEdits: function ( message, sender, sendResponse ) {
-			let hasEdits = false;
+			var hasEdits = false;
 			if ( background.inWhitelist( message.url ) ) {
 				hasEdits = true;
 			}
@@ -139,7 +139,7 @@ background = {
 		 * @returns {Object} jQuery Promise
 		 */
 		requestWhitelist: function () {
-			let data = { 'action': 'query', 'list': 'allpages', 'format': 'json' };
+			var data = { 'action': 'query', 'list': 'allpages', 'format': 'json' };
 			return $.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
 				background.whitelist = [];
@@ -154,7 +154,7 @@ background = {
 		 * @returns {Object} jQuery Promise
 		 */
 		requestBlacklist: function () {
-			let data = { 'action': 'query', 'list': 'protectedtitles', 'format': 'json' };
+			var data = { 'action': 'query', 'list': 'protectedtitles', 'format': 'json' };
 			return $.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
 				background.blacklist = [];
@@ -169,7 +169,7 @@ background = {
 		 * @returns {Object} jQuery Promise
 		 */
 		requestEditToken: function () {
-			let data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
+			var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
 			return $.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
 				background.editToken = response.query.tokens.csrftoken;

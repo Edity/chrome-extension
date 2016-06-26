@@ -77,7 +77,7 @@ popup = {
 	 */
 	onEditPageItemClick: function ( event ) {
 		popup.background.queryCurrentTab( function ( tab ) {
-			popup.background.edit( tab );
+			popup.background.contentScript.startEdit( tab );
 			popup.close();
 		});
 	},

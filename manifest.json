@@ -1,7 +1,7 @@
 {
 	"manifest_version": 2,
 	"name": "Edity",
-	"version": "0.8",
+	"version": "0.9",
 	"author": "Sophivorus",
 	"description": "Edit the Web",
 	"homepage_url": "https://edity.org",
@@ -18,7 +18,7 @@
 	],
 	"background": {
 		"scripts": [
-			"resources/jquery.js",
+			"resources/jquery/jquery-core.js",
 			"background.js"
 		]
 	},
@@ -35,7 +35,8 @@
 				"contentScript.css"
 			],
 			"js": [
-				"resources/jquery.js",
+				"resources/jquery/jquery-core.js",
+				"resources/jquery/jquery-validation.js",
 				"resources/rangy/rangy-core.js",
 				"resources/rangy/rangy-classapplier.js",
 				"resources/rangy/rangy-selectionsaverestore.js",

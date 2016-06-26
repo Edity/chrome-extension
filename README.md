@@ -8,10 +8,13 @@ http://edity.org
 * Improve the link dialog
 * Dynamic popup
 * Check for underscore bugs
-* JavaScript diff engine at edity.org
 
 ## Code conventions
 Edity is a relatively complex Chrome extension and will only get more complex, so some conventions are needed to keep the code under control.
-* Methods that start with "get" always return a value synchronously.
-* Methods that start with "request" always do an AJAX request (normally to edity.org) and return a jQuery promise.
-* Methods that start with "update" always update a value asynchronously.
+
+We follow the Chrome code conventions to integrate better, see https://www.chromium.org/developers/web-development-style-guide
+
+Additionally, we follow the following conventions:
+* Methods that start with "get" always return a value synchronously
+* Methods that start with "request" always do an AJAX request to edity.org
+* Methods that start with "update" always update a value asynchronously
