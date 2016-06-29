@@ -5,14 +5,18 @@ body {
 }
 
 #edity-header {
+	background: #f2f2f2;
 	padding: 10px;
 }
 #edity-header img {
 	float: left;
 	margin-right: 5px;
+	vertical-align: baseline;
 }
-#edity-header h1 {
-	margin: 0;
+#edity-header big {
+	font-size: 19px;
+	line-height: 1;
+	margin-right: 5px;
 }
 #edity-header span {
 	color: #aaa;

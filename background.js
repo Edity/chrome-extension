@@ -3,12 +3,12 @@ background = {
 	/**
 	 * Array of edited URLs
 	 */
-	whitelist: [],
+	editedURLs: [],
 
 	/**
 	 * Array of protected URLs
 	 */
-	blacklist: [],
+	protectedURLs: [],
 
 	/**
 	 * Token needed to edit the wiki
@@ -16,46 +16,103 @@ background = {
 	editToken: null,
 
 	/**
+	 * Identifier of the context menu
+	 */
+	contextMenuID: null,
+
+	/**
 	 * Initialization script
 	 */
 	init: function () {
 		background.bind();
-		background.wiki.requestWhitelist();
-		background.wiki.requestBlacklist();
+		background.wiki.getEditedURLs( function ( editedURLs ) {
+			background.editedURLs = editedURLs;
+		});
+		background.wiki.getProtectedURLs( function ( protectedURLs ) {
+			background.protectedURLs = protectedURLs;
+		});
+		background.contextMenuID = chrome.contextMenus.create({
+			'title': 'Edit with Edity',
+			'contexts': [ 'all' ],
+			'onclick' : function ( info, tab ) {
+				background.contentScript.startEdit( tab );
+			}
+		});
 	},
 
 	/**
 	 * Bind events
 	 */
 	bind: function () {
-		chrome.runtime.onMessage.addListener( background.contentScript.onMessage );
+		chrome.tabs.onUpdated.addListener( this.onUpdated );
+		chrome.tabs.onActivated.addListener( this.onActivated );
+		chrome.runtime.onMessage.addListener( this.contentScript.onMessage );
 	},
 
 	/**
-	 * Convenience method to get the current tab
+	 * Enable or disable the context menu depending on the URL
 	 */
-	queryCurrentTab: function ( callback ) {
-		chrome.tabs.query({ 'active': true, 'currentWindow': true }, function ( tabs ) {
-			var tab = tabs[0];
-			callback( tab );
+	onUpdated: function ( tabId, changeInfo, tab ) {
+		chrome.tabs.sendMessage( tabId, { 'method': 'sendURL' }, function ( url ) {
+			chrome.contextMenus.update( background.contextMenuID, {
+				'enabled': background.isProtected( url ) ? false : true
+			});
 		});
 	},
 
 	/**
-	 * Convenience method to check if the given URL is in the whitelist
+	 * Enable or disable the context menu depending on the URL
 	 */
-	inWhitelist: function ( url ) {
-		if ( background.whitelist.indexOf( url ) === -1 ) {
+	onActivated: function ( activeInfo ) {
+		chrome.tabs.sendMessage( activeInfo.tabId, { 'method': 'sendURL' }, function ( url ) {
+			chrome.contextMenus.update( background.contextMenuID, {
+				'enabled': background.isProtected( url ) ? false : true
+			});
+		});
+	},
+
+	/**
+	 * Convenience method to get the active tab
+	 */
+	getActiveTab: function ( callback ) {
+		chrome.tabs.query({ 'active': true, 'currentWindow': true }, function ( tabs ) {
+			callback( tabs[0] );
+		});
+	},
+
+	/**
+	 * Convenience method to get the badge of the active tab
+	 */
+	getActiveBadge: function ( callback ) {
+		this.getActiveTab( function ( tab ) {
+			chrome.browserAction.getBadgeText({ 'tabId': tab.id }, callback );
+		});
+	},
+
+	/**
+	 * Convenience method to get the URL of the active tab
+	 */
+	getActiveURL: function ( callback ) {
+		this.getActiveTab( function ( tab ) {
+			chrome.tabs.sendMessage( tab.id, { 'method': 'sendURL' }, callback );
+		});
+	},
+
+	/**
+	 * Convenience method to check if the given URL is edited
+	 */
+	isEdited: function ( url ) {
+		if ( background.editedURLs.indexOf( url ) === -1 ) {
 			return false;
 		}
 		return true;
 	},
 
 	/**
-	 * Convenience method to check if the given URL is in the blacklist
+	 * Convenience method to check if the given URL is protected
 	 */
-	inBlacklist: function ( url ) {
-		if ( background.blacklist.indexOf( url ) === -1 ) {
+	isProtected: function ( url ) {
+		if ( background.protectedURLs.indexOf( url ) === -1 ) {
 			return false;
 		}
 		return true;
@@ -74,29 +131,14 @@ background = {
 		},
 
 		/**
-		 * Create a context menu specific for each tab
+		 * Check if the URL sent from the content script is edited
 		 */
-		createContextMenu: function ( message, sender, sendResponse ) {
-			chrome.contextMenus.create({
-				'title': 'Edit with Edity',
-				'contexts': [ 'all' ],
-				'documentUrlPatterns': [ sender.tab.url ],
-				'enabled': background.inBlacklist( message.url ) ? false : true,
-				'onclick' : function ( info, tab ) {
-					background.contentScript.startEdit( tab );
-				}
-			});
-		},
-
-		/**
-		 * Check if the URL sent from the content script has edits
-		 */
-		hasEdits: function ( message, sender, sendResponse ) {
-			var hasEdits = false;
-			if ( background.inWhitelist( message.url ) ) {
-				hasEdits = true;
+		isEdited: function ( message, sender, sendResponse ) {
+			var isEdited = false;
+			if ( background.isEdited( message.url ) ) {
+				isEdited = true;
 			}
-			sendResponse( hasEdits );
+			sendResponse( isEdited );
 		},
 
 		/**
@@ -107,11 +149,22 @@ background = {
 		},
 
 		/**
-		 * Update the whitelist with the URL sent from the content script
+		 * Update the icon depending on if the URL is protected
 		 */
-		updateWhitelist: function ( message, sender, sendResponse ) {
-			if ( ! background.inWhitelist( message.url ) ) {
-				background.whitelist.push( message.url );
+		updateIcon: function ( message, sender, sendResponse ) {
+			var path = 'images/icon19.png';
+			if ( background.isProtected( message.url ) ) {
+				path = 'images/icon19-grey.png';
+			}
+			chrome.browserAction.setIcon({ 'tabId': sender.tab.id, 'path': path });
+		},
+
+		/**
+		 * Add the URL sent from the content script to the edited URLs
+		 */
+		updateEditedURLs: function ( message, sender, sendResponse ) {
+			if ( ! background.isEdited( message.url ) ) {
+				background.editedURLs.push( message.url );
 			}
 		},
 
@@ -122,7 +175,8 @@ background = {
 			if ( background.editToken ) {
 				chrome.tabs.sendMessage( tab.id, { 'method': 'startEdit', 'editToken': background.editToken });
 			} else {
-				background.wiki.requestEditToken().then( function () {
+				background.wiki.getEditToken( function ( editToken ) {
+					background.editToken = editToken;
 					background.contentScript.startEdit( tab );
 				});
 			}
@@ -135,44 +189,44 @@ background = {
 	wiki: {
 
 		/**
-		 * Request the latest whitelist from the wiki
-		 * @returns {Object} jQuery Promise
+		 * Request the latest list of edited URLs from the wiki
 		 */
-		requestWhitelist: function () {
-			var data = { 'action': 'query', 'list': 'allpages', 'format': 'json' };
-			return $.get( 'https://edity.org/api.php', data, function ( response ) {
+		getEditedURLs: function ( callback ) {
+			var data = { 'action': 'query', 'list': 'allpages', 'aplimit': 999, 'format': 'json' };
+			$.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-				background.whitelist = [];
+				var editedURLs = [];
 				response.query.allpages.forEach( function ( page ) {
-					background.whitelist.push( page.title );
+					editedURLs.push( page.title );
 				});
+				callback( editedURLs );
 			});
 		},
 
 		/**
-		 * Request the latest blacklist from the wiki
-		 * @returns {Object} jQuery Promise
+		 * Request the latest list of protected URLs from the wiki
 		 */
-		requestBlacklist: function () {
-			var data = { 'action': 'query', 'list': 'protectedtitles', 'format': 'json' };
-			return $.get( 'https://edity.org/api.php', data, function ( response ) {
+		getProtectedURLs: function ( callback ) {
+			var data = { 'action': 'query', 'list': 'protectedtitles', 'ptlimit': 999, 'format': 'json' };
+			$.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-				background.blacklist = [];
+				var protectedURLs = [];
 				response.query.protectedtitles.forEach( function ( page ) {
-					background.blacklist.push( page.title );
+					protectedURLs.push( page.title );
 				});
+				callback( protectedURLs );
 			});
 		},
 
 		/**
 		 * Request an edit token from the wiki
-		 * @returns {Object} jQuery Promise
 		 */
-		requestEditToken: function () {
+		getEditToken: function ( callback ) {
 			var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
-			return $.get( 'https://edity.org/api.php', data, function ( response ) {
+			$.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-				background.editToken = response.query.tokens.csrftoken;
+				var editToken = response.query.tokens.csrftoken;
+				callback( editToken );
 			});
 		}
 	}

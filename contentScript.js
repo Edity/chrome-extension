@@ -4,18 +4,19 @@
 contentScript = {
 
 	/**
-	 * The current URL without query string or hash
+	 * The current URL, normalized
 	 */
-	url: window.location.origin + window.location.pathname,
+	url: location.origin + location.pathname,
 
 	/**
-	 * Array of edits to the current URL
+	 * Edits associated with the current URL
 	 */
 	edits: [],
 
 	/**
-	 * Amount of edits to the current page
-	 * May be less than edits.length, for example in pages with dynamic content
+	 * Amount of edits actually done to the current page
+	 * May be less than the edits associated with the current URL
+	 * for example in dynamic pages or if the source changed
 	 */
 	liveEditCount: 0,
 
@@ -24,10 +25,20 @@ contentScript = {
 	 */
 	init: function () {
 		contentScript.bind();
-		contentScript.background.createContextMenu();
-		contentScript.background.hasEdits( function ( hasEdits ) {
-			if ( hasEdits ) {
-				contentScript.wiki.requestEdits();
+		contentScript.background.updateIcon();
+		contentScript.background.isEdited( function ( isEdited ) {
+			if ( isEdited ) {
+				contentScript.wiki.getEdits( function ( edits ) {
+					if ( edits ) {
+						edits.forEach( function ( edit ) {
+							if ( document.body.innerHTML.indexOf( edit.oldHTML ) > -1 ) {
+								document.body.innerHTML = document.body.innerHTML.replace( edit.oldHTML, edit.newHTML ); // This is the magic line
+								contentScript.liveEditCount++;
+							}
+						});
+						contentScript.background.updateBadge();
+					}
+				});
 			}
 		});
 	},
@@ -40,40 +51,46 @@ contentScript = {
 	},
 
 	/**
+	 * Get the elements just edited
+	 */
+	getEditedElements: function () {
+		return $( '*' ).filter( function () {
+			var oldHTML = $( this ).data( 'oldHTML' );
+			if ( ! oldHTML ) {
+				return false;
+			}
+			if ( oldHTML === this.outerHTML ) {
+				return false;
+			}
+			return true;
+		});
+	},
+
+	/**
 	 * Sub-object to communicate with the wiki
 	 */
 	wiki: {
 
 		/**
-		 * Request the edits to the current URL
+		 * Request the edits associated with the current URL
 		 */
-		requestEdits: function () {
+		getEdits: function ( callback ) {
 			var data = { 'titles': contentScript.url, 'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'format': 'json' };
-			return $.get( 'https://edity.org/api.php', data, function ( response ) {
+			$.get( 'https://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-
 				// Make sure the wiki page exists
-				var id = parseInt( Object.keys( response.query.pages )[0] );
-				if ( id === -1 ) {
+				var pageId = parseInt( Object.keys( response.query.pages )[0] );
+				if ( pageId === -1 ) {
 					return;
 				}
-
-				// Make sure the content is valid (in case of vandalism)
-				var content = response.query.pages[ id ].revisions[0]['*']; // Unwrap the content
+				// Make sure the content returned is valid (in case of wiki vandalism)
+				var content = response.query.pages[ pageId ].revisions[0]['*']; // Unwrap the content
 				content = JSON.parse( content );
 				if ( content === null ) {
-					return;
+					return; // Better validation required
 				}
-
-				// Assume that the content is a valid array of edits
-				contentScript.edits = content;
-				contentScript.edits.forEach( function ( edit ) {
-					if ( document.body.innerHTML.indexOf( edit.oldHTML ) > -1 ) {
-						document.body.innerHTML = document.body.innerHTML.replace( edit.oldHTML, edit.newHTML ); // This is the magic line
-						contentScript.liveEditCount++;
-					}
-				});
-				contentScript.background.updateBadge();
+				// At this point, assume that the content is a valid response and pass it to the callback
+				callback( content );
 			});
 		}
 	},
@@ -91,18 +108,33 @@ contentScript = {
 		},
 
 		/**
-		 * Start the edit mode when the background says so
+		 * Start the design mode when the background says so
 		 */
 		startEdit: function ( message, sender, sendResponse ) {
+			document.designMode = "on";
 			contentScript.toolbar.init();
 			contentScript.editToken = message.editToken;
 		},
 
 		/**
+		 * Send the current URL to the background
+		 */
+		sendURL: function ( message, sender, sendResponse ) {
+			sendResponse( contentScript.url );
+		},
+
+		/**
 		 * Ask the background if the current URL has edits
 		 */
-		hasEdits: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'hasEdits', 'url': contentScript.url }, callback );
+		isEdited: function ( callback ) {
+			chrome.runtime.sendMessage({ 'method': 'isEdited', 'url': contentScript.url }, callback );
+		},
+
+		/**
+		 * Ask the background to update the icon
+		 */
+		updateIcon: function ( callback ) {
+			chrome.runtime.sendMessage({ 'method': 'updateIcon', 'url': contentScript.url }, callback );
 		},
 
 		/**
@@ -115,19 +147,12 @@ contentScript = {
 			}
 			chrome.runtime.sendMessage({ 'method': 'updateBadge', 'text': text }, callback );
 		},
-	
-		/**
-		 * Ask the background to add the current URL to the whitelist
-		 */
-		updateWhitelist: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'updateWhitelist', 'url': contentScript.url }, callback );
-		},
 
 		/**
-		 * Ask the background to create a context menu specific for this tab
+		 * Ask the background to add the current URL to the edited URLs
 		 */
-		createContextMenu: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'createContextMenu', 'url': contentScript.url }, callback );
+		updateEditedURLs: function ( callback ) {
+			chrome.runtime.sendMessage({ 'method': 'updateEditedURLs', 'url': contentScript.url }, callback );
 		}
 	},
 
@@ -137,10 +162,15 @@ contentScript = {
 	toolbar: {
 
 		/**
+		 * Rangy selection object
+		 */
+		selection: null,
+
+		/**
 		 * Initialization script
 		 */
 		init: function () {
-			rangy.init();
+			this.selection = rangy.getSelection();
 			this.build();
 			this.bind();
 		},
@@ -196,7 +226,7 @@ contentScript = {
 		 * Bind events
 		 */
 		bind: function () {
-			$( document ).click( this.onDocumentClick );
+			$( document ).on( 'click keyup', this.onDocumentActivity );
 			this.saveButton.click( this.onSaveButtonClick );
 			this.cancelButton.click( this.onCancelButtonClick );
 			this.italicButton.click( this.onItalicButtonClick );
@@ -211,24 +241,32 @@ contentScript = {
 		 */
 		close: function () {
 			this.toolbar.remove();
-			$( document ).off( 'click', this.onBodyClick );
+			document.designMode = "off";
 		},
 
 		/**
-		 * Make the clicked element editable
+		 * When the caret moves to a new element, save the original HTML and the selection
 		 */
-		onDocumentClick: function ( event ) {
-			var element = $( event.target );
-			if ( element.closest( '#edity-toolbar' ).length > 0 ) {
-				return; // Don't edit the toolbar
+		onDocumentActivity: function ( event ) {
+			if ( $( event.target ).closest( '#edity-toolbar' ).length > 0 ) {
+				return; // Ignore toolbar activity
 			}
-			if ( element.is( 'body' ) ) {
-				return; // Too much, probably trying to blank the page
+
+			// Update the selection
+			contentScript.toolbar.selection = rangy.getSelection();
+
+			// Save the original HTML of the selected element
+			var selection = contentScript.toolbar.selection;
+			if ( selection.rangeCount > 0 ) {
+				var node = selection.getRangeAt(0).commonAncestorContainer;
+				if ( node.nodeType === 3 ) {
+					node = node.parentNode;
+				}
+				var element = $( node );
+				if ( ! element.data( 'oldHTML' ) ) {
+					element.data( 'oldHTML', node.outerHTML );
+				}
 			}
-			if ( element.attr( 'contenteditable' ) ) {
-				return; // The element is already editable
-			}
-			element.data( 'oldHTML', element.prop( 'outerHTML' ) ).prop( 'contenteditable', true ).focus();
 		},
 
 		onBoldButtonClick: function ( event ) {
@@ -257,9 +295,8 @@ contentScript = {
 
 		onCancelButtonClick: function ( event ) {
 			contentScript.toolbar.close();
-			// Restore the old HTML of all the edited elements
-			$( '[contenteditable]' ).each( function ( index, element ) {
-				element.prop( 'outerHTML', element.data( 'oldHTML' ) ).removeData( 'oldHTML' );
+			contentScript.getEditedElements().each( function () {
+				this.outerHTML = $( this ).data( 'oldHTML' );
 			});
 		},
 
@@ -294,11 +331,6 @@ contentScript = {
 			target: '',
 
 			/**
-			 * Rangy object used to restore the selection when the link dialog is closed
-			 */
-			selection: null,
-
-			/**
 			 * Initialization script
 			 */
 			init: function () {
@@ -306,7 +338,6 @@ contentScript = {
 				this.text = this.getText();
 				this.href = this.getHref();
 				this.target = this.getTarget();
-				this.selection = rangy.saveSelection();
 				this.build();
 				this.bind();
 			},
@@ -319,9 +350,9 @@ contentScript = {
 				this.background = $( '<div>' ).addClass( 'edity-dialog-background' );
 				this.linkDialog = $( '<div>' ).addClass( 'edity-dialog' );
 				this.hrefInput = $( '<input>' ).attr({ 'type': 'text', 'autofocus': true, 'placeholder': this.href }).val( this.href );
-				this.hrefInputLabel = $( '<label>' ).text( 'Enter the URL of the link' );
+				this.hrefInputLabel = $( '<label>' ).text( 'Enter the link address' );
 				this.textInput = $( '<input>' ).attr({ 'type': 'text', 'placeholder': this.text }).val( this.text );
-				this.textInputLabel = $( '<label>' ).text( 'Enter the text of the link (the URL will be used if not provided)' );
+				this.textInputLabel = $( '<label>' ).text( 'Enter the link text (or the link address will be used)' );
 				this.targetCheckbox = $( '<input>' ).attr({ 'type': 'checkbox' }).prop( 'checked', ( this.target === '_blank' ? true : false ) );
 				this.targetCheckboxLabel = $( '<label>' ).text( 'Open the link in a new tab' );
 				this.rightButtons = $( '<div>' ).addClass( 'edity-float-right' );
@@ -364,18 +395,17 @@ contentScript = {
 			 */
 			close: function () {
 				this.background.remove();
-				rangy.restoreSelection( this.selection );
 			},
 
 			/**
 			 * Get the <a> tag based on the selection
 			 */
 			getAnchor: function () {
-				var anchorNode = $( rangy.getSelection().anchorNode );
+				var anchorNode = $( contentScript.toolbar.selection.anchorNode );
 				if ( anchorNode.is( 'a' ) ) {
 					return anchorNode;
 				}
-				var parentNode = $( rangy.getSelection().anchorNode.parentNode );
+				var parentNode = $( contentScript.toolbar.selection.anchorNode.parentNode );
 				if ( parentNode.is( 'a' ) ) {
 					return parentNode;
 				}
@@ -399,7 +429,7 @@ contentScript = {
 				if ( this.anchor ) {
 					return this.anchor.text();
 				}
-				return rangy.getSelection().toString();
+				return contentScript.toolbar.selection.toString();
 			},
 
 			/**
@@ -440,17 +470,25 @@ contentScript = {
 					linkDialog.text = linkDialog.href; // Use the href as text
 				}
 
-				linkDialog.close(); // Closing the dialog restores the selection
+				linkDialog.close(); // Closing the dialog will restore the selection
 
-				if ( linkDialog.anchor ) {
-					linkDialog.anchor.attr({ 'href': linkDialog.href, 'target': linkDialog.target }).text( linkDialog.text );
+				var anchor = linkDialog.anchor;
+				if ( anchor ) {
+					anchor.attr({ 'href': linkDialog.href, 'target': linkDialog.target }).text( linkDialog.text );
 				} else {
-					var anchor = $( '<a>' ).attr({ 'href': linkDialog.href, 'target': linkDialog.target }).text( linkDialog.text ),
-						selection = rangy.getSelection(),
-						range = selection.getRangeAt(0);
+					anchor = $( '<a>' ).attr({ 'href': linkDialog.href, 'target': linkDialog.target }).text( linkDialog.text );
+
+					var range = contentScript.toolbar.selection.getRangeAt(0);
 					range.deleteContents();
 					range.insertNode( anchor[0] );
 				}
+
+				// Select the recently added link
+				var range = document.createRange();
+				range.selectNodeContents( anchor[0] );
+				var selection = window.getSelection();
+				selection.removeAllRanges();
+				selection.addRange( range );
 			}
 		},
 
@@ -543,19 +581,17 @@ contentScript = {
 			},
 
 			onSaveButtonClick: function ( event ) {
-				// Add all the edits to the edits array
-				$( '[contenteditable]' ).each( function ( index, element ) {
+				contentScript.toolbar.close();
 
-					var oldHTML = $( element ).data( 'oldHTML' ),
-						newHTML = $( element ).removeData( 'oldHTML' ).removeAttr( 'contenteditable' ).prop( 'outerHTML' );
+				// Merge the new edits with the old
+				contentScript.getEditedElements().each( function () {
 
-					if ( oldHTML === newHTML ) {
-						return; // No edits
-					}
+					var oldHTML = $( this ).data( 'oldHTML' ),
+						newHTML = this.outerHTML;
 
 					for ( var edit of contentScript.edits ) {
 
-						// If the edit is to an already edited element, merge the edits
+						// If the edit is to an already edited element, merge them
 						if ( oldHTML === edit.newHTML ) {
 							edit.newHTML = newHTML;
 							return;
@@ -569,12 +605,12 @@ contentScript = {
 							return;
 						}
 					}
-					// If we reach this point, add the edit to the array of edits
+					// If we reach this point, add the edit to the edits array
 					contentScript.liveEditCount++;
 					contentScript.edits.push({ 'oldHTML': oldHTML, 'newHTML': newHTML });
 				});
 
-				contentScript.toolbar.close();
+				// Update the wiki
 				var data = {
 					'action': 'edit',
 					'title': contentScript.url,
@@ -587,7 +623,7 @@ contentScript = {
 				$.post( 'https://edity.org/api.php', data, function ( response ) {
 					console.log( response );
 					contentScript.background.updateBadge();
-					contentScript.background.updateWhitelist();
+					contentScript.background.updateEditedURLs();
 				});
 			}
 		}

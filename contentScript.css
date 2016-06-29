@@ -3,18 +3,23 @@
 	border-bottom: 1px solid #aaa;
 	box-sizing: border-box;
 	color: inherit;
+	font-size: 15px;
 	padding: 5px;
 	position: fixed;
 	top: 0; left: 0;
 	width: 100%;
-	z-index: 1;
+	z-index: 999;
 }
 
 #edity-toolbar button {
 	background: transparent;
 	border: 1px solid #aaa;
 	border-radius: 5px;
+	box-shadow: none;
 	color: inherit;
+	font: inherit;
+	height: 1;
+	line-height: normal;
 	margin: 5px;
 	padding: 5px 10px;
 }
