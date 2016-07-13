@@ -126,7 +126,7 @@ popup = {
 	 */
 	onProtectedPageItemClick: function ( event ) {
 		chrome.tabs.create({
-			'url': 'https://edity.org/Edity:Protected_sites'
+			'url': 'https://edity.org/Edity:Protected_pages'
 		});
 	},
 
@@ -135,7 +135,7 @@ popup = {
 	 */
 	onEditCountItemClick: function ( event ) {
 		chrome.tabs.create({
-			'url': 'https://edity.org/' + popup.url
+			'url': 'https://edity.org/' + ( popup.badge ? popup.url : 'Editing_guidelines' )
 		});
 	},
 
