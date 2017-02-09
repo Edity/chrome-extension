@@ -6,19 +6,19 @@ background = {
 	editedURLs: [],
 
 	/**
-	 * Array of protected URLs
+	 * Array of protected domains
 	 */
-	protectedURLs: [],
-
-	/**
-	 * Token needed to edit the wiki
-	 */
-	editToken: null,
+	protectedDomains: [],
 
 	/**
 	 * Identifier of the context menu
 	 */
 	contextMenuID: null,
+
+	/**
+	 * Token needed to edit the wiki
+	 */
+	editToken: null,
 
 	/**
 	 * Initialization script
@@ -28,8 +28,8 @@ background = {
 		background.wiki.getEditedURLs( function ( editedURLs ) {
 			background.editedURLs = editedURLs;
 		});
-		background.wiki.getProtectedURLs( function ( protectedURLs ) {
-			background.protectedURLs = protectedURLs;
+		background.wiki.getProtectedDomains( function ( protectedDomains ) {
+			background.protectedDomains = protectedDomains;
 		});
 		background.contextMenuID = chrome.contextMenus.create({
 			'title': 'Edit with Edity',
@@ -50,23 +50,23 @@ background = {
 	},
 
 	/**
-	 * Enable or disable the context menu depending on the URL
+	 * Enable or disable the context menu depending on the domain
 	 */
 	onUpdated: function ( tabId, changeInfo, tab ) {
-		chrome.tabs.sendMessage( tabId, { 'method': 'sendURL' }, function ( url ) {
+		chrome.tabs.sendMessage( tabId, { 'method': 'sendDomain' }, function ( domain ) {
 			chrome.contextMenus.update( background.contextMenuID, {
-				'enabled': background.isProtected( url ) ? false : true
+				'enabled': background.isProtected( domain ) ? false : true
 			});
 		});
 	},
 
 	/**
-	 * Enable or disable the context menu depending on the URL
+	 * Enable or disable the context menu depending on the domain
 	 */
 	onActivated: function ( activeInfo ) {
-		chrome.tabs.sendMessage( activeInfo.tabId, { 'method': 'sendURL' }, function ( url ) {
+		chrome.tabs.sendMessage( activeInfo.tabId, { 'method': 'sendDomain' }, function ( domain ) {
 			chrome.contextMenus.update( background.contextMenuID, {
-				'enabled': background.isProtected( url ) ? false : true
+				'enabled': background.isProtected( domain ) ? false : true
 			});
 		});
 	},
@@ -81,20 +81,29 @@ background = {
 	},
 
 	/**
-	 * Convenience method to get the badge of the active tab
-	 */
-	getActiveBadge: function ( callback ) {
-		this.getActiveTab( function ( tab ) {
-			chrome.browserAction.getBadgeText({ 'tabId': tab.id }, callback );
-		});
-	},
-
-	/**
 	 * Convenience method to get the URL of the active tab
 	 */
 	getActiveURL: function ( callback ) {
 		this.getActiveTab( function ( tab ) {
 			chrome.tabs.sendMessage( tab.id, { 'method': 'sendURL' }, callback );
+		});
+	},
+
+	/**
+	 * Convenience method to get the domain of the active tab
+	 */
+	getActiveDomain: function ( callback ) {
+		this.getActiveTab( function ( tab ) {
+			chrome.tabs.sendMessage( tab.id, { 'method': 'sendDomain' }, callback );
+		});
+	},
+
+	/**
+	 * Convenience method to get the badge of the active tab
+	 */
+	getActiveBadge: function ( callback ) {
+		this.getActiveTab( function ( tab ) {
+			chrome.browserAction.getBadgeText({ 'tabId': tab.id }, callback );
 		});
 	},
 
@@ -109,10 +118,10 @@ background = {
 	},
 
 	/**
-	 * Convenience method to check if the given URL is protected
+	 * Convenience method to check if the given domain is protected
 	 */
-	isProtected: function ( url ) {
-		if ( background.protectedURLs.indexOf( url ) === -1 ) {
+	isProtected: function ( domain ) {
+		if ( background.protectedDomains.indexOf( domain ) === -1 ) {
 			return false;
 		}
 		return true;
@@ -127,7 +136,7 @@ background = {
 		 * Event handler
 		 */
 		onMessage: function ( message, sender, sendResponse ) {
-			background.contentScript[ message.method ]( message, sender, sendResponse );
+			return background.contentScript[ message.method ]( message, sender, sendResponse );
 		},
 
 		/**
@@ -135,7 +144,7 @@ background = {
 		 */
 		isEdited: function ( message, sender, sendResponse ) {
 			var isEdited = false;
-			if ( background.isEdited( message.url ) ) {
+			if ( background.isEdited( sender.url ) ) {
 				isEdited = true;
 			}
 			sendResponse( isEdited );
@@ -153,7 +162,7 @@ background = {
 		 */
 		updateIcon: function ( message, sender, sendResponse ) {
 			var path = 'images/icon19.png';
-			if ( background.isProtected( message.url ) ) {
+			if ( background.isProtected( message.domain ) ) {
 				path = 'images/icon19-grey.png';
 			}
 			chrome.browserAction.setIcon({ 'tabId': sender.tab.id, 'path': path });
@@ -163,23 +172,32 @@ background = {
 		 * Add the URL sent from the content script to the edited URLs
 		 */
 		updateEditedURLs: function ( message, sender, sendResponse ) {
-			if ( ! background.isEdited( message.url ) ) {
-				background.editedURLs.push( message.url );
+			if ( ! background.isEdited( sender.url ) ) {
+				background.editedURLs.push( sender.url );
 			}
+		},
+
+		/**
+		 * Get the latest edits for the URL sent from the content script
+		 */
+		getEdits: function ( message, sender, sendResponse ) {
+			background.wiki.getEdits( sender.url, sendResponse );
+			return true; // Keep the channel open until sendResponse is called
+		},
+
+		/**
+		 * Save the latest edits sent by the contentScript
+		 */
+		saveEdits: function ( message, sender, sendResponse ) {
+			background.wiki.saveEdits( message.data, sendResponse );
+			return true; // Keep the channel open until sendResponse is called
 		},
 
 		/**
 		 * Ask the content script to start the edit mode
 		 */
 		startEdit: function ( tab ) {
-			if ( background.editToken ) {
-				chrome.tabs.sendMessage( tab.id, { 'method': 'startEdit', 'editToken': background.editToken });
-			} else {
-				background.wiki.getEditToken( function ( editToken ) {
-					background.editToken = editToken;
-					background.contentScript.startEdit( tab );
-				});
-			}
+			chrome.tabs.sendMessage( tab.id, { 'method': 'startEdit' });
 		}
 	},
 
@@ -193,7 +211,7 @@ background = {
 		 */
 		getEditedURLs: function ( callback ) {
 			var data = { 'action': 'query', 'list': 'allpages', 'aplimit': 999, 'format': 'json' };
-			$.get( 'https://edity.org/api.php', data, function ( response ) {
+			$.get( 'http://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
 				var editedURLs = [];
 				response.query.allpages.forEach( function ( page ) {
@@ -204,17 +222,17 @@ background = {
 		},
 
 		/**
-		 * Request the latest list of protected URLs from the wiki
+		 * Request the latest list of protected hosts from the wiki
 		 */
-		getProtectedURLs: function ( callback ) {
+		getProtectedDomains: function ( callback ) {
 			var data = { 'action': 'query', 'list': 'protectedtitles', 'ptlimit': 999, 'format': 'json' };
-			$.get( 'https://edity.org/api.php', data, function ( response ) {
+			$.get( 'http://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-				var protectedURLs = [];
+				var protectedDomains = [];
 				response.query.protectedtitles.forEach( function ( page ) {
-					protectedURLs.push( page.title );
+					protectedDomains.push( page.title );
 				});
-				callback( protectedURLs );
+				callback( protectedDomains );
 			});
 		},
 
@@ -222,11 +240,40 @@ background = {
 		 * Request an edit token from the wiki
 		 */
 		getEditToken: function ( callback ) {
+			if ( background.editToken ) {
+				callback( background.editToken ); // No need to request it twice
+			}
 			var data = { 'action': 'query', 'meta': 'tokens', 'format': 'json' };
-			$.get( 'https://edity.org/api.php', data, function ( response ) {
+			$.get( 'http://edity.org/api.php', data, function ( response ) {
 				//console.log( response );
-				var editToken = response.query.tokens.csrftoken;
-				callback( editToken );
+				background.editToken = response.query.tokens.csrftoken;
+				callback( background.editToken );
+			});
+		},
+
+		/**
+		 * Request the edits associated with the current URL
+		 */
+		getEdits: function ( url, callback ) {
+			var data = { 'title': url, 'action': 'raw' };
+			$.get( 'http://edity.org/index.php', data, callback, 'json' );
+		},
+
+		/**
+		 * Save the edits
+		 */
+		saveEdits: function ( data, callback ) {
+			background.wiki.getEditToken( function ( editToken ) {
+				$.post( 'http://edity.org/api.php', {
+					'action': 'edit',
+					'format': 'json',
+					'minor': data.minor,
+					'summary': data.summary,
+					//'tag': 'chrome edit',
+					'text': JSON.stringify( data.edits ),
+					'title': data.url,
+					'token': editToken
+				}, callback );
 			});
 		}
 	}

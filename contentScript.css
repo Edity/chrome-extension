@@ -1,33 +1,49 @@
-#edity-toolbar {
+/* Normalize everything */
+
+#edity-toolbar-wrapper * {
 	background: white;
-	border-bottom: 1px solid #aaa;
+	border-color: #aaa;
+	border-radius: 0;
+	border-style: solid;
+	border-width: 0;
+	box-shadow: none;
 	box-sizing: border-box;
-	color: inherit;
+	color: black;
+	font-family: Verdana;
 	font-size: 15px;
+	line-height: normal;
+	margin: 0;
+	min-height: intrinsic;
+	padding: 0;
+	text-align: left;
+	text-transform: none;
+	width: initial;
+}
+
+/* Override with element-specific styling */
+
+#edity-toolbar {
+	border-bottom-width: 1px;
 	padding: 5px;
 	position: fixed;
 	top: 0; left: 0;
 	width: 100%;
-	z-index: 999;
 }
 
 #edity-toolbar button {
-	background: transparent;
-	border: 1px solid #aaa;
+	border-width: 1px;
 	border-radius: 5px;
-	box-shadow: none;
-	color: inherit;
-	font: inherit;
-	height: 1;
-	line-height: normal;
 	margin: 5px;
 	padding: 5px 10px;
 }
-#edity-toolbar button:hover {
+#edity-toolbar button:enabled:hover {
 	background: #eee;
 }
+#edity-toolbar button:disabled {
+	color: #aaa;
+}
 
-.edity-dialog-background {
+#edity-toolbar .edity-dialog-background {
 	background: rgba( 0, 0, 0, 0.5 );
 	position: fixed;
 	top: 0;
@@ -35,11 +51,10 @@
 	width: 100%;
 	height: 100%;
 }
-.edity-dialog {
-	background: white;
-	border: 1px solid #aaa;
+
+#edity-toolbar .edity-dialog {
+	border-width: 1px;
 	border-radius: 5px;
-	box-sizing: border-box;
 	transform: translateX( -50% );
 	padding: 20px;
 	position: fixed;
@@ -47,25 +62,27 @@
 	left: 50%;
 	width: 500px;
 }
-.edity-dialog label {
-	margin: 5px;
-}
-.edity-dialog input[type="text"] {
-	color: inherit;
-	border: 1px solid #aaa;
-	border-radius: 5px;
-	box-sizing: border-box;
-	display: block;
+
+#edity-toolbar .edity-dialog label {
 	font: inherit;
-	margin: 5px 0;
-	padding: 15px 10px;
-	width: 100%;
-}
-.edity-dialog input[type="checkbox"] {
-	margin-right: 5px;
-	vertical-align: top;
+	margin: 5px;
+	text-transform: inherit;
 }
 
-.edity-float-right {
+#edity-toolbar .edity-dialog input[type="text"] {
+	border-width: 1px;
+	border-radius: 5px;
+	display: block;
+	margin: 5px 0;
+	padding: 10px;
+	width: 100%;
+}
+
+#edity-toolbar .edity-dialog input[type="checkbox"] {
+	margin-right: 5px;
+	vertical-align: -webkit-baseline-middle;
+}
+
+#edity-toolbar .edity-float-right {
 	float: right;
 }

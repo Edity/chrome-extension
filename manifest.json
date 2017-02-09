@@ -4,7 +4,7 @@
 	"version": "0.9",
 	"author": "Sophivorus",
 	"description": "Edit the Web",
-	"homepage_url": "https://edity.org",
+	"homepage_url": "http://edity.org",
 	"offline_enabled": false,
 	"icons": {
 		"16": "images/icon16.png",
@@ -14,7 +14,7 @@
 	"permissions": [
 		"tabs",
 		"contextMenus",
-		"https://edity.org/"
+		"http://edity.org/"
 	],
 	"background": {
 		"scripts": [

@@ -4,19 +4,14 @@
 contentScript = {
 
 	/**
-	 * The current URL, normalized
-	 */
-	url: location.origin + location.pathname,
-
-	/**
-	 * Edits associated with the current URL
+	 * Edits to the current URL retrieved from the wiki
 	 */
 	edits: [],
 
 	/**
-	 * Amount of edits actually done to the current page
-	 * May be less than the edits associated with the current URL
-	 * for example in dynamic pages or if the source changed
+	 * Amount of edits actually done to the current loaded page
+	 * May be less than the total number of edits associated to the URL
+	 * for example in pages with dynamic content
 	 */
 	liveEditCount: 0,
 
@@ -28,16 +23,16 @@ contentScript = {
 		contentScript.background.updateIcon();
 		contentScript.background.isEdited( function ( isEdited ) {
 			if ( isEdited ) {
-				contentScript.wiki.getEdits( function ( edits ) {
-					if ( edits ) {
-						edits.forEach( function ( edit ) {
-							if ( document.body.innerHTML.indexOf( edit.oldHTML ) > -1 ) {
-								document.body.innerHTML = document.body.innerHTML.replace( edit.oldHTML, edit.newHTML ); // This is the magic line
-								contentScript.liveEditCount++;
-							}
-						});
-						contentScript.background.updateBadge();
-					}
+				contentScript.background.getEdits( function ( edits ) {
+					//console.log( edits );
+					contentScript.edits = edits;
+					contentScript.edits.forEach( function ( edit ) {
+						if ( document.body.innerHTML.indexOf( edit.oldHTML ) > -1 ) {
+							document.body.innerHTML = document.body.innerHTML.replace( edit.oldHTML, edit.newHTML ); // This is the magic line
+							contentScript.liveEditCount++;
+						}
+					});
+					contentScript.background.updateBadge();
 				});
 			}
 		});
@@ -67,35 +62,6 @@ contentScript = {
 	},
 
 	/**
-	 * Sub-object to communicate with the wiki
-	 */
-	wiki: {
-
-		/**
-		 * Request the edits associated with the current URL
-		 */
-		getEdits: function ( callback ) {
-			var data = { 'titles': contentScript.url, 'action': 'query', 'prop': 'revisions', 'rvprop': 'content', 'format': 'json' };
-			$.get( 'https://edity.org/api.php', data, function ( response ) {
-				//console.log( response );
-				// Make sure the wiki page exists
-				var pageId = parseInt( Object.keys( response.query.pages )[0] );
-				if ( pageId === -1 ) {
-					return;
-				}
-				// Make sure the content returned is valid (in case of wiki vandalism)
-				var content = response.query.pages[ pageId ].revisions[0]['*']; // Unwrap the content
-				content = JSON.parse( content );
-				if ( content === null ) {
-					return; // Better validation required
-				}
-				// At this point, assume that the content is a valid response and pass it to the callback
-				callback( content );
-			});
-		}
-	},
-
-	/**
 	 * Sub-object to communicate with the background
 	 */
 	background: {
@@ -108,51 +74,71 @@ contentScript = {
 		},
 
 		/**
-		 * Start the design mode when the background says so
+		 * Start the design mode when the background requests it
 		 */
 		startEdit: function ( message, sender, sendResponse ) {
-			document.designMode = "on";
+			document.designMode = 'on';
 			contentScript.toolbar.init();
-			contentScript.editToken = message.editToken;
 		},
 
 		/**
-		 * Send the current URL to the background
+		 * Send the current URL when the background requests it
 		 */
 		sendURL: function ( message, sender, sendResponse ) {
-			sendResponse( contentScript.url );
+			sendResponse( document.URL );
+		},
+
+		/**
+		 * Send the current domain when the background requests it
+		 */
+		sendDomain: function ( message, sender, sendResponse ) {
+			sendResponse( document.domain );
 		},
 
 		/**
 		 * Ask the background if the current URL has edits
 		 */
 		isEdited: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'isEdited', 'url': contentScript.url }, callback );
+			chrome.runtime.sendMessage({ 'method': 'isEdited' }, callback );
 		},
 
 		/**
 		 * Ask the background to update the icon
 		 */
 		updateIcon: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'updateIcon', 'url': contentScript.url }, callback );
+			chrome.runtime.sendMessage({ 'method': 'updateIcon', 'domain': document.domain }, callback );
 		},
 
 		/**
 		 * Ask the background to update the badge with the latest liveEditCount
 		 */
 		updateBadge: function ( callback ) {
-			var text = '';
+			var badge = '';
 			if ( contentScript.liveEditCount > 0 ) {
-				text += contentScript.liveEditCount;
+				badge += contentScript.liveEditCount; // Using += turns the count into a string
 			}
-			chrome.runtime.sendMessage({ 'method': 'updateBadge', 'text': text }, callback );
+			chrome.runtime.sendMessage({ 'method': 'updateBadge', 'text': badge }, callback );
 		},
 
 		/**
 		 * Ask the background to add the current URL to the edited URLs
 		 */
 		updateEditedURLs: function ( callback ) {
-			chrome.runtime.sendMessage({ 'method': 'updateEditedURLs', 'url': contentScript.url }, callback );
+			chrome.runtime.sendMessage({ 'method': 'updateEditedURLs' }, callback );
+		},
+
+		/**
+		 * Ask the background to send the latest edits to the current URL
+		 */
+		getEdits: function ( callback ) {
+			chrome.runtime.sendMessage({ 'method': 'getEdits' }, callback );
+		},
+
+		/**
+		 * Ask the background to save the edits done to the current URL
+		 */
+		saveEdits: function ( data, callback ) {
+			chrome.runtime.sendMessage({ 'method': 'saveEdits', 'data': data }, callback );
 		}
 	},
 
@@ -180,17 +166,18 @@ contentScript = {
 		 */
 		build: function () {
 			// Create the toolbar and its elements
+			this.toolbarWrapper = $( '<div>' ).attr( 'id', 'edity-toolbar-wrapper' ).prop( 'contenteditable', false );
 			this.toolbar = $( '<div>' ).attr( 'id', 'edity-toolbar' );
 			this.rightButtons = $( '<div>' ).addClass( 'edity-float-right' );
-			this.boldButton = $( '<button>' );
+			this.boldButton = $( '<button>' ).prop( 'disabled', true );
 			this.boldButtonText = $( '<b>' ).text( 'B' );
-			this.italicButton = $( '<button>' );
+			this.italicButton = $( '<button>' ).prop( 'disabled', true );
 			this.italicButtonText = $( '<i>' ).text( 'I' );
-			this.strikeButton = $( '<button>' );
+			this.strikeButton = $( '<button>' ).prop( 'disabled', true );
 			this.strikeButtonText = $( '<s>' ).text( 'S' );
-			this.underlineButton = $( '<button>' );
+			this.underlineButton = $( '<button>' ).prop( 'disabled', true );
 			this.underlineButtonText = $( '<u>' ).text( 'U' );
-			this.linkButton = $( '<button>' );
+			this.linkButton = $( '<button>' ).prop( 'disabled', false );
 			this.linkButtonText = $( '<span>' ).text( 'Link' );
 			this.cancelButton = $( '<button>' );
 			this.cancelButtonText = $( '<span>' ).text( 'Cancel' );
@@ -217,9 +204,13 @@ contentScript = {
 				this.strikeButton,
 				this.linkButton
 			);
+			this.toolbarWrapper.append( this.toolbar );
 
 			// Add it to the DOM
-			$( 'body' ).append( this.toolbar );
+			$( 'html' ).append( this.toolbarWrapper );
+
+			// Move the body down to avoid covering the page
+			$( 'body' ).css( 'transform', 'translateY( 50px )' );
 		},
 
 		/**
@@ -240,8 +231,9 @@ contentScript = {
 		 * Close the toolbar
 		 */
 		close: function () {
-			this.toolbar.remove();
-			document.designMode = "off";
+			this.toolbarWrapper.remove();
+			document.designMode = 'off';
+			$( 'body' ).css( 'transform', 'translateY( 0 )' );
 		},
 
 		/**
@@ -311,7 +303,7 @@ contentScript = {
 
 			/**
 			 * The <a> tag to edit, if any
-			 * The user may want to edit an exising <a> tag or create a new one
+			 * If the user wants to create a new tag, this will be null
 			 */
 			anchor: null,
 
@@ -388,6 +380,8 @@ contentScript = {
 				this.targetCheckbox.change( this.onTargetCheckboxChange );
 				this.cancelButton.click( this.onCancelButtonClick );
 				this.saveButton.click( this.onSaveButtonClick );
+				this.linkDialog.click( this.onLinkDialogClick );
+				this.background.click( this.onBackgroundClick );
 			},
 
 			/**
@@ -409,7 +403,6 @@ contentScript = {
 				if ( parentNode.is( 'a' ) ) {
 					return parentNode;
 				}
-				return null;
 			},
 
 			/**
@@ -456,6 +449,14 @@ contentScript = {
 			},
 
 			onCancelButtonClick: function ( event ) {
+				contentScript.toolbar.linkDialog.close();
+			},
+
+			onLinkDialogClick: function ( event ) {
+				event.stopPropagation();
+			},
+
+			onBackgroundClick: function ( event ) {
 				contentScript.toolbar.linkDialog.close();
 			},
 
@@ -556,6 +557,7 @@ contentScript = {
 				this.minorCheckbox.change( this.onMinorCheckBoxChange );
 				this.cancelButton.click( this.onCancelButtonClick );
 				this.saveButton.click( this.onSaveButtonClick );
+				this.background.click( this.onBackgroundClick );
 			},
 
 			/**
@@ -580,6 +582,14 @@ contentScript = {
 				contentScript.toolbar.saveDialog.close();
 			},
 
+			onSaveDialogClick: function ( event ) {
+				event.stopPropagation();
+			},
+
+			onBackgroundClick: function ( event ) {
+				contentScript.toolbar.saveDialog.close();
+			},
+
 			onSaveButtonClick: function ( event ) {
 				contentScript.toolbar.close();
 
@@ -596,8 +606,8 @@ contentScript = {
 							edit.newHTML = newHTML;
 							return;
 						}
-						// If the edit happens to return the HTML to its original state, remove the edit, per useless
-						// For example, if a user makes an edit, saves, and then edits again to revert it
+						// If the edit happens to return the HTML to its original state, remove it per no longer useful
+						// For example, if a user makes an edit, saves, and then edits again to manually undo it
 						if ( newHTML === edit.oldHTML ) {
 							var index = contentScript.edits.indexOf( edit );
 							contentScript.edits.splice( index, 1 );
@@ -610,21 +620,15 @@ contentScript = {
 					contentScript.edits.push({ 'oldHTML': oldHTML, 'newHTML': newHTML });
 				});
 
-				// Update the wiki
 				var data = {
-					'action': 'edit',
-					'title': contentScript.url,
-					'text': JSON.stringify( contentScript.edits ),
+					'url': location.href,
+					'edits': contentScript.edits,
 					'summary': contentScript.toolbar.saveDialog.summary,
-					'minor': contentScript.toolbar.saveDialog.minor,
-					'token': contentScript.editToken,
-					'format': 'json'
+					'minor': contentScript.toolbar.saveDialog.minor
 				};
-				$.post( 'https://edity.org/api.php', data, function ( response ) {
-					console.log( response );
-					contentScript.background.updateBadge();
-					contentScript.background.updateEditedURLs();
-				});
+
+				contentScript.background.saveEdits( data );
+				contentScript.background.updateBadge();
 			}
 		}
 	}

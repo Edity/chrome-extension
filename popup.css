@@ -6,6 +6,7 @@ body {
 
 #edity-header {
 	background: #f2f2f2;
+	cursor: pointer;
 	padding: 10px;
 }
 #edity-header img {
